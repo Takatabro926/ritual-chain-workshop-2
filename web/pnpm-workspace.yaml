@@ -1,0 +1,8 @@
+# Same reason as the hardhat package: pnpm 11 skips dependency build scripts
+# unless they are listed, and writes a placeholder file when it skips one.
+# None of these are needed here — keccak has a pure-JS fallback, and bufferutil
+# and utf-8-validate are optional websocket speedups.
+allowBuilds:
+  bufferutil: false
+  keccak: false
+  utf-8-validate: false
