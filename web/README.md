@@ -40,6 +40,46 @@ Every action is gated by phase, so the page never offers a button the contract w
 reject: no claiming inside the challenge window, no challenging a market that has not
 resolved, no betting after the close block.
 
+## Demo mode
+
+The page has two data sources behind one interface. `chain` reads a deployed
+contract through wagmi. `demo` runs the contract's rules in the browser against the
+recorded oracle readings, so the app can be looked at with no node, no wallet and
+no deployment.
+
+Mode is decided once, in `src/lib/source.ts`: demo when `NEXT_PUBLIC_DEMO=1`, or
+whenever no contract address is configured. A deployment with nothing to talk to is
+more useful as a demo than as an error message.
+
+The demo says what it is at the top of the page — nothing on it is a transaction and
+no money is involved. What it does not invent are the numbers: every reading comes
+from `src/lib/oracle-fixtures.json`, recorded from live endpoints and narrowed by
+the real jq binary, the same values the contract's tests run against. A market that
+settles on `244239` settles on what Kraken actually said.
+
+Because there is no chain to wait for, the demo carries the clock. **Skip to next
+event** jumps to whatever would happen on its own next — a betting window closing, a
+Scheduler wake-up, a challenge window expiring — and reports what it did:
+
+```
+⟳ #1 read 244082 from source 1
+⟳ #1 read 244239 from source 2
+⟳ #1 settled YES on 244239
+```
+
+One source per wake-up, exactly as on chain, because a short-running async
+precompile may be called once per transaction.
+
+## Deploying it
+
+Vercel, with **Root Directory** set to `web` — the Next app is not at the repository
+root. Leave `NEXT_PUBLIC_PREDICT_ADDRESS` unset and the deployment runs in demo mode;
+set it, and the same build talks to a real contract.
+
+```bash
+pnpm build && pnpm start   # what the deployment runs
+```
+
 ## Design
 
 Ritual's palette on black — green for trust, lime for data, pink for the opposing

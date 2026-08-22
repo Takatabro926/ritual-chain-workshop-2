@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount } from "wagmi";
-import { predictContract } from "@/lib/contract";
 import { COMPARATOR_LABEL } from "@/lib/market";
-import { useTx } from "./useTx";
+import { useSource } from "@/lib/source";
 
 const MAX_ORACLES = 5;
 
@@ -17,9 +15,8 @@ const STARTER: Source[] = [
   },
 ];
 
-export function CreateMarketForm({ onCreated }: { onCreated: () => void }) {
-  const { isConnected } = useAccount();
-  const { send, status, error } = useTx();
+export function CreateMarketForm() {
+  const source = useSource();
 
   const [question, setQuestion] = useState(
     "Will ETH be above $2,500 when this market resolves?",
@@ -38,25 +35,20 @@ export function CreateMarketForm({ onCreated }: { onCreated: () => void }) {
     );
   }
 
-  async function submit() {
-    if (!predictContract) return;
-    const ok = await send({
-      ...predictContract,
-      functionName: "createMarket",
-      args: [
-        {
-          question,
-          oracles: sources,
-          quorum,
-          target: BigInt(target || "0"),
-          comparator,
-          feeBps,
-          bettingSeconds: BigInt(bettingSeconds),
-          resolveDelaySeconds: BigInt(resolveDelaySeconds),
-        },
-      ],
+  function submit() {
+    return source.perform({
+      type: "createMarket",
+      params: {
+        question,
+        oracles: sources,
+        quorum,
+        target: BigInt(target || "0"),
+        comparator,
+        feeBps,
+        bettingSeconds: BigInt(bettingSeconds),
+        resolveDelaySeconds: BigInt(resolveDelaySeconds),
+      },
     });
-    if (ok) onCreated();
   }
 
   return (
@@ -217,20 +209,14 @@ export function CreateMarketForm({ onCreated }: { onCreated: () => void }) {
           </div>
         </div>
 
-        {error && <p className="notice bad">{error}</p>}
+        {source.error && <p className="notice bad">{source.error}</p>}
 
         <button
           className="primary"
-          disabled={!isConnected || !predictContract || status !== "idle"}
+          disabled={!source.isConnected || source.busy}
           onClick={submit}
         >
-          {status === "signing"
-            ? "Confirm in your wallet…"
-            : status === "mining"
-              ? "Creating…"
-              : status === "done"
-                ? "Created ✓"
-                : "Create market"}
+          {source.busy ? "Creating…" : "Create market"}
         </button>
       </div>
     </section>

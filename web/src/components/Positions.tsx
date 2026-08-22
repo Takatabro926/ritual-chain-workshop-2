@@ -3,26 +3,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { formatEther, isAddress } from "viem";
-import { useAccount, usePublicClient } from "wagmi";
+import { usePublicClient } from "wagmi";
 import { predictAbi, predictContract } from "@/lib/contract";
-import { useTx } from "./useTx";
+import { DEMO_MODE, useSource } from "@/lib/source";
 
 /**
  * Every bet mints an ERC-721, and moving it moves the stake.
  *
  * The contract has no enumeration — an index of every owner's tokens would cost
- * storage on every bet for something only this panel wants — so the list is
- * rebuilt from PositionOpened logs and filtered by current owner.
+ * storage on every bet for something only this panel wants — so on chain the list
+ * is rebuilt from PositionOpened logs and filtered by current owner.
  */
-export function Positions({ onChanged }: { onChanged: () => void }) {
-  const { address } = useAccount();
+export function Positions() {
+  const source = useSource();
   const client = usePublicClient();
-  const { send, status, error } = useTx();
   const [recipients, setRecipients] = useState<Record<string, string>>({});
+  const address = source.address;
 
-  const { data: positions, refetch } = useQuery({
+  const { data: fromLogs } = useQuery({
     queryKey: ["positions", address],
-    enabled: Boolean(address && client && predictContract),
+    enabled: !DEMO_MODE && Boolean(address && client && predictContract),
     refetchInterval: 8000,
     queryFn: async () => {
       const logs = await client!.getContractEvents({
@@ -38,32 +38,28 @@ export function Positions({ onChanged }: { onChanged: () => void }) {
         isYes: boolean;
         amount: bigint;
       }[] = [];
-
       for (const log of logs) {
-        const args = log.args as {
-          tokenId?: bigint;
-          marketId?: bigint;
-          isYes?: boolean;
-          amount?: bigint;
-        };
-        if (args.tokenId === undefined) continue;
+        const args = log.args as Record<string, unknown>;
+        const tokenId = args.tokenId as bigint | undefined;
+        if (tokenId === undefined) continue;
         const owner = (await client!.readContract({
           ...predictContract!,
           functionName: "ownerOf",
-          args: [args.tokenId],
+          args: [tokenId],
         })) as string;
         if (owner.toLowerCase() !== address!.toLowerCase()) continue;
         owned.push({
-          tokenId: args.tokenId,
-          marketId: args.marketId!,
-          isYes: args.isYes!,
-          amount: args.amount!,
+          tokenId,
+          marketId: args.marketId as bigint,
+          isYes: args.isYes as boolean,
+          amount: args.amount as bigint,
         });
       }
       return owned;
     },
   });
 
+  const positions = DEMO_MODE ? source.positions : (fromLogs ?? []);
   if (!address) return null;
 
   return (
@@ -73,11 +69,7 @@ export function Positions({ onChanged }: { onChanged: () => void }) {
         A bet is a token. Hand it to someone else and the claim goes with it.
       </p>
 
-      {error && <p className="notice bad">{error}</p>}
-
-      {positions === undefined ? (
-        <p className="muted">Reading logs…</p>
-      ) : positions.length === 0 ? (
+      {positions.length === 0 ? (
         <p className="muted">Nothing open yet.</p>
       ) : (
         <div className="stack" style={{ gap: "0.75rem", marginTop: "0.75rem" }}>
@@ -107,18 +99,14 @@ export function Positions({ onChanged }: { onChanged: () => void }) {
                     }
                   />
                   <button
-                    disabled={!isAddress(to) || status !== "idle"}
-                    onClick={async () => {
-                      const ok = await send({
-                        ...predictContract!,
-                        functionName: "safeTransferFrom",
-                        args: [address, to as `0x${string}`, position.tokenId],
-                      } as never);
-                      if (ok) {
-                        refetch();
-                        onChanged();
-                      }
-                    }}
+                    disabled={!isAddress(to) || source.busy}
+                    onClick={() =>
+                      source.perform({
+                        type: "transfer",
+                        tokenId: position.tokenId,
+                        to,
+                      })
+                    }
                   >
                     Send
                   </button>

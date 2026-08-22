@@ -1,16 +1,11 @@
 "use client";
 
-import { useAccount, useBlockNumber, useConnect, useDisconnect } from "wagmi";
-import { shortAddress } from "@/lib/market";
 import { predictAddress } from "@/lib/contract";
+import { shortAddress } from "@/lib/market";
+import { useSource } from "@/lib/source";
 
 export function ConnectBar() {
-  const { address, isConnected, chain } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { data: blockNumber } = useBlockNumber({ watch: true });
-
-  const injected = connectors[0];
+  const source = useSource();
 
   return (
     <header className="row spread" style={{ marginBottom: "2.5rem" }}>
@@ -18,29 +13,33 @@ export function ConnectBar() {
         <span className="label">RitualPredict</span>
         <div className="row" style={{ gap: "1rem", marginTop: "0.25rem" }}>
           <span className="hex">
-            {predictAddress ? shortAddress(predictAddress) : "no contract configured"}
+            {source.mode === "demo"
+              ? "recorded data, no contract"
+              : predictAddress
+                ? shortAddress(predictAddress)
+                : "no contract configured"}
           </span>
           <span className="hex">
-            {chain ? chain.name : "unknown chain"} · block{" "}
+            {source.chainName ?? "unknown chain"} · block{" "}
             <span style={{ color: "var(--lime)" }}>
-              {blockNumber?.toString() ?? "—"}
+              {source.blockNumber?.toString() ?? "—"}
             </span>
           </span>
         </div>
       </div>
 
-      {isConnected ? (
+      {source.mode === "demo" ? (
+        <span className="hex">{shortAddress(source.address!)} · demo account</span>
+      ) : source.isConnected ? (
         <div className="row">
-          <span className="hex">{address ? shortAddress(address) : ""}</span>
-          <button onClick={() => disconnect()}>Disconnect</button>
+          <span className="hex">
+            {source.address ? shortAddress(source.address) : ""}
+          </span>
+          <button onClick={() => source.disconnect()}>Disconnect</button>
         </div>
       ) : (
-        <button
-          className="primary"
-          disabled={!injected || isPending}
-          onClick={() => injected && connect({ connector: injected })}
-        >
-          {injected ? "Connect wallet" : "No wallet found"}
+        <button className="primary" onClick={() => source.connect()}>
+          Connect wallet
         </button>
       )}
     </header>

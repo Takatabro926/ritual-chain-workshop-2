@@ -1,0 +1,69 @@
+{
+  "capturedAt": "2026-08-22T20:12:16.625Z",
+  "jqVersion": "jq-1.8.2",
+  "records": [
+    {
+      "name": "coingecko-eth-usd",
+      "note": "Nested float. The market target is in cents, so jq scales and floors.",
+      "url": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      "status": 200,
+      "query": ".ethereum.usd * 100 | floor",
+      "ok": true,
+      "value": "244082"
+    },
+    {
+      "name": "coinbase-eth-usd",
+      "note": "Same number, different shape: the amount is a string and needs tonumber.",
+      "url": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+      "status": 200,
+      "query": ".data.amount | tonumber * 100 | floor",
+      "ok": true,
+      "value": "244285"
+    },
+    {
+      "name": "kraken-eth-usd",
+      "note": "A third venue, quoting the same asset a few cents away from the others.",
+      "url": "https://api.kraken.com/0/public/Ticker?pair=ETHUSD",
+      "status": 200,
+      "query": ".result.XETHZUSD.c[0] | tonumber * 100 | floor",
+      "ok": true,
+      "value": "244239"
+    },
+    {
+      "name": "kraken-clock-early",
+      "note": "The same source recorded twice, seconds apart. A market rule is fixed at creation, so a second reading has to come from the same url and the same jq program — only the moment differs. A clock guarantees the two disagree.",
+      "url": "https://api.kraken.com/0/public/Time",
+      "status": 200,
+      "query": ".result.unixtime",
+      "ok": true,
+      "value": "1787429532"
+    },
+    {
+      "name": "kraken-clock-late",
+      "note": "The second snapshot, taken a few seconds after the first.",
+      "url": "https://api.kraken.com/0/public/Time",
+      "status": 200,
+      "query": ".result.unixtime",
+      "ok": true,
+      "value": "1787429536"
+    },
+    {
+      "name": "github-not-found",
+      "note": "A real non-200 with a real JSON error body. The first attempt at this used a rate-limited endpoint, which answered 403 once and 200 the next day; a repository that does not exist answers 404 every time.",
+      "url": "https://api.github.com/repos/ritual-foundation/this-repository-does-not-exist",
+      "status": 404,
+      "query": ".stargazers_count",
+      "ok": false,
+      "value": "0"
+    },
+    {
+      "name": "html-not-json",
+      "note": "A 200 that jq cannot parse. Exercises the jsonPath failure branch.",
+      "url": "https://example.com",
+      "status": 200,
+      "query": ".price",
+      "ok": false,
+      "value": "0"
+    }
+  ]
+}

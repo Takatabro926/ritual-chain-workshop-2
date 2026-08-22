@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { formatEther, parseEther } from "viem";
-import { useAccount, useReadContract } from "wagmi";
-import { predictContract } from "@/lib/contract";
+import { useSource, useMarketExtras } from "@/lib/source";
 import {
   COMPARATOR_SYMBOL,
   Outcome,
@@ -16,50 +15,15 @@ import {
   type Market,
 } from "@/lib/market";
 import { StateBadge } from "./StateBadge";
-import { useTx } from "./useTx";
 
-export function MarketCard({
-  market,
-  blockNumber,
-  blockTimeMs,
-  onChanged,
-}: {
-  market: Market;
-  blockNumber: bigint | undefined;
-  blockTimeMs: bigint | undefined;
-  onChanged: () => void;
-}) {
-  const { address, isConnected } = useAccount();
-  const { send, status, error } = useTx();
+export function MarketCard({ market }: { market: Market }) {
+  const source = useSource();
+  const { stakes, bond } = useMarketExtras(market.id, market);
   const [stake, setStake] = useState("0.1");
+
+  const { address, isConnected, blockNumber, blockTimeMs, busy, error } = source;
   const phase = phaseOf(market, blockNumber);
-
-  const { data: mine } = useReadContract({
-    ...predictContract!,
-    functionName: "stakesOf",
-    args: address ? [market.id, address] : undefined,
-    query: { enabled: Boolean(address && predictContract), refetchInterval: 4000 },
-  });
-  const { data: bond } = useReadContract({
-    ...predictContract!,
-    functionName: "disputeBond",
-    args: [market.id],
-    query: { enabled: Boolean(predictContract), refetchInterval: 8000 },
-  });
-
-  const [myYes, myNo, mySettled, myClaimable] = (mine as
-    | readonly [bigint, bigint, boolean, bigint]
-    | undefined) ?? [0n, 0n, false, 0n];
-
-  async function call(functionName: string, args: unknown[], value?: bigint) {
-    const ok = await send({
-      ...predictContract!,
-      functionName,
-      args,
-      ...(value === undefined ? {} : { value }),
-    } as never);
-    if (ok) onChanged();
-  }
+  const [myYes, myNo, mySettled, myClaimable] = stakes;
 
   const share = yesShare(market);
   const toClose = blocksUntil(market.closeBlock, blockNumber);
@@ -201,14 +165,28 @@ export function MarketCard({
             />
             <button
               className="primary"
-              disabled={!isConnected || status !== "idle"}
-              onClick={() => call("bet", [market.id, true], parseEther(stake || "0"))}
+              disabled={!isConnected || busy}
+              onClick={() =>
+                source.perform({
+                  type: "bet",
+                  marketId: market.id,
+                  isYes: true,
+                  value: parseEther(stake || "0"),
+                })
+              }
             >
               Back YES
             </button>
             <button
-              disabled={!isConnected || status !== "idle"}
-              onClick={() => call("bet", [market.id, false], parseEther(stake || "0"))}
+              disabled={!isConnected || busy}
+              onClick={() =>
+                source.perform({
+                  type: "bet",
+                  marketId: market.id,
+                  isYes: false,
+                  value: parseEther(stake || "0"),
+                })
+              }
             >
               Back NO
             </button>
@@ -218,18 +196,20 @@ export function MarketCard({
         {phase === "challengeable" && (
           <button
             className="caution"
-            disabled={!isConnected || status !== "idle" || bond === undefined}
-            onClick={() => call("dispute", [market.id], bond as bigint)}
+            disabled={!isConnected || busy || bond === undefined}
+            onClick={() =>
+              source.perform({ type: "dispute", marketId: market.id, value: bond! })
+            }
           >
-            Challenge for {bond === undefined ? "…" : formatEther(bond as bigint)}
+            Challenge for {bond === undefined ? "…" : formatEther(bond)}
           </button>
         )}
 
         {phase === "final" && myClaimable > 0n && !mySettled && (
           <button
             className="primary"
-            disabled={!isConnected || status !== "idle"}
-            onClick={() => call("claimWinnings", [market.id])}
+            disabled={!isConnected || busy}
+            onClick={() => source.perform({ type: "claimWinnings", marketId: market.id })}
           >
             Claim {formatEther(myClaimable)}
           </button>
@@ -238,8 +218,8 @@ export function MarketCard({
         {phase === "refundable" && myClaimable > 0n && !mySettled && (
           <button
             className="primary"
-            disabled={!isConnected || status !== "idle"}
-            onClick={() => call("claimRefund", [market.id])}
+            disabled={!isConnected || busy}
+            onClick={() => source.perform({ type: "claimRefund", marketId: market.id })}
           >
             Refund {formatEther(myClaimable)}
           </button>
@@ -247,8 +227,8 @@ export function MarketCard({
 
         {isCreator && phase === "final" && !market.feeClaimed && market.feeBps > 0 && (
           <button
-            disabled={!isConnected || status !== "idle"}
-            onClick={() => call("claimFee", [market.id])}
+            disabled={!isConnected || busy}
+            onClick={() => source.perform({ type: "claimFee", marketId: market.id })}
           >
             Take your cut
           </button>
@@ -256,8 +236,8 @@ export function MarketCard({
 
         {isChallenger && market.bondRefundable && !market.bondClaimed && (
           <button
-            disabled={!isConnected || status !== "idle"}
-            onClick={() => call("claimBond", [market.id])}
+            disabled={!isConnected || busy}
+            onClick={() => source.perform({ type: "claimBond", marketId: market.id })}
           >
             Recover bond
           </button>
