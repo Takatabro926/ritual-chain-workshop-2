@@ -89,10 +89,10 @@ await viem.assertions.emitWithArgs(counter.write.inc(), counter, "Increment", [
 ]);
 
 // ETH balance changes (positive = received, negative = spent, before gas)
-await viem.assertions.balancesHaveChanged(game.write.claim(), {
-  [winner]: PRIZE,
-  [loser]: -STAKE,
-});
+await viem.assertions.balancesHaveChanged(game.write.claim(), [
+  { address: winner, amount: PRIZE },
+  { address: loser, amount: -STAKE },
+]);
 ```
 
 The `*WithArgs` matchers (`revertWithCustomErrorWithArgs` and `emitWithArgs`) accept a `(value) => boolean` predicate at any arg position, alongside concrete values. The plugin also ships an `anyValue` helper for positions you don't care about:

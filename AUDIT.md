@@ -64,11 +64,17 @@ It is not an upstream bug: the README says *"Empty winning side → refundable"*
 `onScheduledResolve` — record the outcome and observed value, then invalidate. Worth an
 explicit test rather than trust, because the requirement lives only in prose.
 
-### F7 — the README's dust claim is unmeasured · **noted (measure in step 4)**
+### F7 — the README's dust claim, now measured · **verified, no change**
 
 *"Integer division leaves sub-wei dust in the contract; that is deliberate and negligible."*
-Plausible per claimant, but the aggregate over many claimants is never stated. Measuring it
-is cheap once the suite exists, so it will be measured and reported rather than repeated.
+Plausible per claimant, but the aggregate over many claimants was never stated, so it was
+measured instead of repeated.
+
+`_payout` truncates once per claimant, so the pool can lose at most one wei per winner, and
+the aggregate is bounded by the number of winners rather than by the size of the pool. A
+market with a 4 ETH pool and two winners on a 3 ETH winning side leaves **1 wei** behind
+after both claims. The claim is accurate; the bound is now asserted in `test/payouts.ts`
+rather than assumed.
 
 ### F8 — `receive()` accepts ether nobody can recover · **noted**
 
@@ -104,3 +110,34 @@ from the quoted price. No change is proposed — the behaviour belongs to jq and
 point, not to this contract — but it is the reason the harness replays recorded jq output
 instead of imitating jq: a hand-written stand-in would have answered 242818 and the
 discrepancy would never have surfaced.
+
+### F12 — the bundled viem skill documents an API the installed plugin does not have · **fixed**
+
+`.claude/skills/hardhat-toolbox-viem/SKILL.md` (and its `.agents` twin) show
+`balancesHaveChanged` taking an address-keyed object:
+
+```ts
+await viem.assertions.balancesHaveChanged(game.write.claim(), { [winner]: PRIZE });
+```
+
+The installed `@nomicfoundation/hardhat-viem-assertions@3.1.2` takes
+`Array<{ address, amount }>` and fails with `changes.map is not a function` on the
+documented form. Both copies of the skill now show the array.
+
+### F13 — a fresh install ends with an unresolved placeholder file · **fixed**
+
+`pnpm install` on pnpm 11 skips esbuild's build script, exits with
+`ERR_PNPM_IGNORED_BUILDS`, and writes `hardhat/pnpm-workspace.yaml` containing the literal
+text `esbuild: set this to true or false`. A clean checkout therefore gains an untracked,
+unfinished file on first install.
+
+esbuild's script only fetches its native binary, and nothing in the compile, test or
+coverage path reaches it, so the file now answers the question with `false` and is
+committed. Verified by deleting node_modules and installing again: no warning, and the
+suite still passes.
+
+## Coverage
+
+`npx hardhat test nodejs --coverage` — 50 tests, **100.00% line and statement coverage on
+`contracts/RitualPredict.sol`**. Every branch listed as uncovered at 97% turned out to be
+reachable, so the gap was closed with tests rather than explained away.

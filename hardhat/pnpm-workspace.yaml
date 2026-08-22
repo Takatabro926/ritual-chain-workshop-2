@@ -1,0 +1,6 @@
+# pnpm 11 skips dependency build scripts unless they are listed here, and writes
+# this file with a placeholder when it skips one. esbuild's script only fetches
+# its native binary; nothing in this project's compile, test or coverage path
+# reaches it, so it stays off and installs stay deterministic.
+allowBuilds:
+  esbuild: false
