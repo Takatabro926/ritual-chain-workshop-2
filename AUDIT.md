@@ -89,3 +89,18 @@ It looks redundant at first read — the Scheduler authorising itself. The inter
 resolves it: the call is made *on* the Scheduler, and the argument is the address being
 authorised to call back into the caller and draw its fees. The Scheduler is exactly that
 address. Left alone deliberately, not overlooked.
+
+## Found while building the harness
+
+### F11 — jq arithmetic is IEEE-754, and the market target sits on that boundary · **noted**
+
+The recorded CoinGecko body is `{"ethereum":{"usd":2428.18}}`. Real jq 1.8.2 evaluates
+`.ethereum.usd * 100 | floor` to **242817**, not 242818, because 2428.18 is not exactly
+representable and the product lands just below the integer.
+
+This matters because a market compares one integer against a fixed target. A market whose
+target is exactly the observed cent resolves the other way from what a reader would predict
+from the quoted price. No change is proposed — the behaviour belongs to jq and to floating
+point, not to this contract — but it is the reason the harness replays recorded jq output
+instead of imitating jq: a hand-written stand-in would have answered 242818 and the
+discrepancy would never have surfaced.
