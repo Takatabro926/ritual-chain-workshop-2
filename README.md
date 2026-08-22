@@ -4,6 +4,8 @@
 
 A self-resolving binary prediction market on [Ritual Chain](https://docs.ritualfoundation.org).
 
+**Live demo — no wallet, no chain, no install: <https://ritual-predict-roan.vercel.app>**
+
 Ask a question like *"Will ETH clear $2,420 when this market resolves?"*, stake native
 RITUAL on YES or NO, and watch it settle itself. When the betting window closes **nobody
 presses a resolve button and no backend cron job runs**. The Ritual Scheduler wakes the
