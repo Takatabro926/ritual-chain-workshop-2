@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {RitualChain, IScheduler, IRitualWallet, ITEEServiceRegistry} from "./ritual/RitualChain.sol";
+import {PositionToken} from "./PositionToken.sol";
 
 /**
  * RitualPredict — a self-resolving binary prediction market.
@@ -19,7 +20,7 @@ import {RitualChain, IScheduler, IRitualWallet, ITEEServiceRegistry} from "./rit
  * can never disagree. Human durations are converted at `blockTimeMs`, measured from the
  * live chain at deploy time (`scripts/block-time.ts`).
  */
-contract RitualPredict {
+contract RitualPredict is PositionToken {
     // ─────────────────────────────── Types ───────────────────────────────
 
     enum MarketState {
@@ -96,6 +97,13 @@ contract RitualPredict {
         bool bondClaimed;
     }
 
+    /// A stake, as an object that can change hands. One per bet.
+    struct Position {
+        uint256 marketId;
+        bool isYes;
+        uint256 amount;
+    }
+
     /// Arguments to `createMarket`, grouped so the whole rule reads as one unit at the
     /// call site (and to keep the stack shallow).
     struct NewMarket {
@@ -168,6 +176,9 @@ contract RitualPredict {
     mapping(uint256 => mapping(address => uint256)) public noStake;
     mapping(uint256 => mapping(address => bool)) public settled;
 
+    /// What each position token stands for.
+    mapping(uint256 => Position) public positions;
+
     // ────────────────────────────── Events ───────────────────────────────
 
     event MarketCreated(
@@ -203,6 +214,14 @@ contract RitualPredict {
     event BetPlaced(
         uint256 indexed marketId,
         address indexed bettor,
+        bool isYes,
+        uint256 amount
+    );
+    /// The token that stands for the bet just placed.
+    event PositionOpened(
+        uint256 indexed marketId,
+        uint256 indexed tokenId,
+        address indexed owner,
         bool isYes,
         uint256 amount
     );
@@ -383,7 +402,36 @@ contract RitualPredict {
             m.totalNo += msg.value;
         }
 
+        uint256 tokenId = _mintPosition(msg.sender);
+        positions[tokenId] = Position(marketId, isYes, msg.value);
+
         emit BetPlaced(marketId, msg.sender, isYes, msg.value);
+        emit PositionOpened(marketId, tokenId, msg.sender, isYes, msg.value);
+    }
+
+    /**
+     * A position changing hands moves the stake with it, so every view and every
+     * payout keeps working off the same per-account totals as before.
+     *
+     * The one refusal: an account that has already claimed has been paid for all
+     * of its stake, so its tokens are spent. Letting one move would pay the same
+     * stake twice.
+     */
+    function _beforePositionTransfer(
+        uint256 tokenId,
+        address from,
+        address to
+    ) internal override {
+        Position memory p = positions[tokenId];
+        if (settled[p.marketId][from]) revert AlreadySettled();
+
+        if (p.isYes) {
+            yesStake[p.marketId][from] -= p.amount;
+            yesStake[p.marketId][to] += p.amount;
+        } else {
+            noStake[p.marketId][from] -= p.amount;
+            noStake[p.marketId][to] += p.amount;
+        }
     }
 
     /**

@@ -95,3 +95,35 @@ the fixtures instead hold **two snapshots of one source, recorded seconds apart*
 (`kraken-clock-early`, `kraken-clock-late`). A target between them reads NO on the
 first and YES on the second, which is a genuine disagreement rather than a
 manufactured one.
+
+## E4 — Positions as ERC-721
+
+A bet mints a token. Moving the token moves the stake.
+
+The token is the way a position changes hands, not a second set of books:
+`_beforePositionTransfer` moves the amount between the two accounts in `yesStake` or
+`noStake`, so `stakesOf`, `claimWinnings`, `claimRefund` and the pari-mutuel maths all
+keep working off exactly the totals they worked off before. Nothing about payouts
+changed, which is why the whole existing suite passed through this change untouched.
+
+- **One refusal:** an account that has already claimed cannot transfer. It was paid for
+  all of its stake, so its tokens are spent, and letting one move would pay the same
+  stake twice. Those tokens stay in existence as a record and are inert — a deliberate
+  trade-off against the per-owner index that burning them properly would have needed on
+  every bet.
+- **No enumeration.** Nothing here lists an owner's tokens, and the index to support it
+  would cost storage on every bet for a feature nothing uses.
+- **ERC-721 written out, not imported.** The project has no OpenZeppelin dependency,
+  and adding one to inherit a few hundred lines would have been the heavier change.
+  `PositionToken.sol` implements ERC-165, ERC-721 and its metadata interface, including
+  the receiver check on `safeTransferFrom` — a contract that answers with the wrong
+  selector is refused, not just one that cannot answer at all.
+
+## A note on size
+
+`RitualPredict` deploys at **20,245 bytes** against the EIP-170 limit of 24,576, leaving
+4,331. The local node does not enforce that limit, so a contract can outgrow it, pass
+every test, and fail only on a real chain. `scripts/contract-size.ts --check` measures it.
+
+Measure it on a plain build: `hardhat test --coverage` instruments the bytecode and
+reports the same contract at 33,738 bytes, which is not what would be deployed.
