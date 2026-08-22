@@ -470,7 +470,34 @@ contract RitualPredict {
         uint256 marketId,
         uint256 executionIndex
     ) private view returns (address) {
-        // we'll fill this up
+        // executionIndex is in the seed so every retry probes a different slot:
+        // one unhealthy executor must not be able to sink a market.
+        uint256 seed = uint256(
+            keccak256(
+                abi.encodePacked(
+                    marketId,
+                    executionIndex,
+                    block.number,
+                    address(this)
+                )
+            )
+        );
+
+        // A reverting registry must not revert the execution, or the attempt
+        // counter would roll back and the market could never reach Invalid.
+        try
+            ITEEServiceRegistry(RitualChain.TEE_SERVICE_REGISTRY)
+                .pickServiceByCapability(
+                    RitualChain.CAPABILITY_HTTP_CALL,
+                    true,
+                    seed,
+                    EXECUTOR_PROBES
+                )
+        returns (address teeAddress, bool found) {
+            return found ? teeAddress : address(0);
+        } catch {
+            return address(0);
+        }
     }
 
     // ────────────────────── Ritual: scheduling ───────────────────────────
