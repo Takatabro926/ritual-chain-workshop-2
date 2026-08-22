@@ -1,0 +1,103 @@
+{
+  "capturedAt": "2026-08-22T19:30:04.071Z",
+  "jqVersion": "jq-1.8.2",
+  "producedBy": "scripts/record-oracle-fixtures.ts",
+  "records": [
+    {
+      "name": "coingecko-eth-usd",
+      "note": "Nested float. The market target is in cents, so jq scales and floors.",
+      "url": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json; charset=utf-8",
+        "Sat, 22 Aug 2026 19:30:03 GMT",
+        "cloudflare"
+      ],
+      "body": "{\"ethereum\":{\"usd\":2428.21}}",
+      "jq": [
+        {
+          "query": ".ethereum.usd * 100 | floor",
+          "ok": true,
+          "value": "242821"
+        }
+      ]
+    },
+    {
+      "name": "coinbase-eth-usd",
+      "note": "Same number, different shape: the amount is a string and needs tonumber.",
+      "url": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json",
+        "Sat, 22 Aug 2026 19:30:03 GMT",
+        "cloudflare"
+      ],
+      "body": "{\"data\":{\"amount\":\"2428.555\",\"base\":\"ETH\",\"currency\":\"USD\"}}",
+      "jq": [
+        {
+          "query": ".data.amount | tonumber * 100 | floor",
+          "ok": true,
+          "value": "242855"
+        }
+      ]
+    },
+    {
+      "name": "github-rate-limited",
+      "note": "A real non-200 with a real JSON error body. Never a NO, always a miss.",
+      "url": "https://api.github.com/repos/ritual-foundation/ritual-dapp-skills",
+      "status": 403,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json; charset=utf-8",
+        "Sat, 22 Aug 2026 19:30:04 GMT",
+        "Varnish"
+      ],
+      "body": "{\"message\":\"API rate limit exceeded for 0.0.0.0. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+      "jq": [
+        {
+          "query": ".stargazers_count",
+          "ok": false,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "name": "html-not-json",
+      "note": "A 200 that jq cannot parse. Exercises the jsonPath failure branch.",
+      "url": "https://example.com",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "text/html",
+        "Sat, 22 Aug 2026 19:30:04 GMT",
+        "cloudflare"
+      ],
+      "body": "<!doctype html><html lang=\"en\"><head><title>Example Domain</title><link rel=\"icon\" href=\"data:,\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}</style></head><body><div><h1>Example Domain</h1><p>This domain is for use in documentation examples without needing permission. Avoid use in operations.</p><p><a href=\"https://iana.org/domains/example\">Learn more</a></p></div></body></html>\n",
+      "jq": [
+        {
+          "query": ".price",
+          "ok": false,
+          "value": "0"
+        }
+      ]
+    }
+  ]
+}
