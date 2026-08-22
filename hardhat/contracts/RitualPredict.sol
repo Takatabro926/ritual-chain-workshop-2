@@ -287,7 +287,54 @@ contract RitualPredict {
         uint256 executionIndex,
         uint256 marketId
     ) external {
-        // we'll fill this up
+        if (msg.sender != RitualChain.SCHEDULER) revert OnlyScheduler();
+
+        Market storage m = _markets[marketId];
+        // Everything below returns instead of reverting. A revert would undo the
+        // attempt counter and the market could never exhaust its attempts.
+        if (m.closeBlock == 0) return; // unknown market
+        if (m.state == MarketState.Resolved || m.state == MarketState.Invalid)
+            return; // already final; a leftover execution is harmless
+        if (block.number < m.closeBlock) return; // woken before betting closed
+
+        uint8 attempt = m.attempts + 1;
+        m.attempts = attempt;
+        m.state = MarketState.Resolving;
+
+        address executor = _pickExecutor(marketId, executionIndex);
+        emit ResolutionAttempted(marketId, attempt, executor);
+        if (executor == address(0)) {
+            _fail(m, marketId, attempt, "no TEE executor available");
+            return;
+        }
+
+        (bool ok, uint256 observed, string memory reason) = _readOracle(
+            m,
+            executor
+        );
+        if (!ok) {
+            _fail(m, marketId, attempt, reason);
+            return;
+        }
+
+        m.observedValue = observed;
+        Outcome outcome = _compare(observed, m.target, m.comparator)
+            ? Outcome.Yes
+            : Outcome.No;
+        m.outcome = outcome;
+
+        uint256 winningPool = outcome == Outcome.Yes ? m.totalYes : m.totalNo;
+        if (winningPool == 0) {
+            // Pari-mutuel has no denominator when nobody backed the winning
+            // answer. The read stands; the money goes back.
+            _invalidate(m, marketId, "nobody backed the winning side");
+        } else {
+            m.state = MarketState.Resolved;
+            emit MarketResolved(marketId, outcome, observed);
+        }
+
+        // The outcome is final either way, so stop paying for the retries.
+        try IScheduler(RitualChain.SCHEDULER).cancel(m.scheduleId) {} catch {}
     }
 
     /// A failed oracle read is never interpreted as NO. Once the booked attempts are
