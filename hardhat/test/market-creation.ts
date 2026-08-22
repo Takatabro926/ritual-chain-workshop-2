@@ -30,6 +30,7 @@ function rule(overrides: Record<string, unknown> = {}) {
     quorum: 1,
     target: 100000n,
     comparator: Comparator.GTE,
+    feeBps: 0,
     bettingSeconds: BETTING_SECONDS,
     resolveDelaySeconds: RESOLVE_DELAY_SECONDS,
     ...overrides,

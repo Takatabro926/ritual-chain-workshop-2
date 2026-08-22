@@ -58,6 +58,7 @@ describe("local lifecycle", async () => {
         quorum: 1,
         target,
         comparator: Comparator.GTE,
+        feeBps: 0,
         bettingSeconds: 30n,
         resolveDelaySeconds: 15n,
       },

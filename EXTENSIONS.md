@@ -50,3 +50,21 @@ the high and the low is exactly the reason a single endpoint is a weak resolver.
 
 A market with one source and a quorum of one behaves exactly as before, which is how
 the whole existing suite kept passing through this change.
+
+## E2 — The creator's cut
+
+A market may charge its creator a share of the pool, in basis points, fixed at
+creation like every other part of the rule.
+
+- **Bounded at 5%** (`MAX_FEE_BPS = 500`). Without a ceiling this is the one number a
+  creator could set against their own bettors after they had already staked, so the
+  contract refuses anything higher rather than leaving it to good manners.
+- **Charged only on a market that resolves.** A market that refunds hands back whole
+  stakes; there is no service to be paid for when the question was never answered.
+- **Pull-based**, like winnings and refunds. `claimFee` pays the creator once, and
+  anyone may trigger it — the money can only go to the creator either way.
+- **Taken before the split, not after.** `_payout` divides `pool − fee` by the winning
+  side, so the fee is not silently financed out of the rounding.
+
+With `feeBps = 0` the arithmetic is identical to before, which is why the rest of the
+suite was unaffected by this change.

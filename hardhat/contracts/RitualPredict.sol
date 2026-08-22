@@ -60,6 +60,10 @@ contract RitualPredict {
         uint8 quorum;
         uint256 target;
         Comparator comparator;
+        /// Creator's cut of the pool, in basis points. Charged only on a market
+        /// that resolves; a refunded market hands back whole stakes.
+        uint16 feeBps;
+        bool feeClaimed;
         uint64 closeBlock;
         uint64 resolveBlock;
         uint256 scheduleId;
@@ -88,6 +92,7 @@ contract RitualPredict {
         uint8 quorum;
         uint256 target;
         Comparator comparator;
+        uint16 feeBps;
         uint256 bettingSeconds;
         uint256 resolveDelaySeconds;
     }
@@ -121,6 +126,10 @@ contract RitualPredict {
 
     /// Floor for the fee authorised per scheduled execution.
     uint256 public constant MIN_MAX_FEE_PER_GAS = 1 gwei;
+
+    /// Ceiling on the creator's cut. 5% of the pool, and the only number in the
+    /// contract a market creator could otherwise have set against their bettors.
+    uint16 public constant MAX_FEE_BPS = 500;
 
     uint256 public constant MIN_BETTING_SECONDS = 30;
     uint256 public constant MIN_RESOLVE_DELAY_SECONDS = 15;
@@ -193,6 +202,11 @@ contract RitualPredict {
         uint256 observedValue
     );
     event MarketInvalidated(uint256 indexed marketId, string reason);
+    event FeeClaimed(
+        uint256 indexed marketId,
+        address indexed creator,
+        uint256 amount
+    );
     event WinningsClaimed(
         uint256 indexed marketId,
         address indexed claimant,
@@ -218,6 +232,7 @@ contract RitualPredict {
     error EmptyString();
     error TransferFailed();
     error BadOracleSet();
+    error BadFee();
 
     constructor(uint256 blockTimeMs_) {
         if (blockTimeMs_ == 0) revert BadDuration();
@@ -244,6 +259,7 @@ contract RitualPredict {
         uint256 sources = p.oracles.length;
         if (sources == 0 || sources > MAX_ORACLES) revert BadOracleSet();
         if (p.quorum == 0 || p.quorum > sources) revert BadOracleSet();
+        if (p.feeBps > MAX_FEE_BPS) revert BadFee();
         for (uint256 i = 0; i < sources; i++) {
             if (bytes(p.oracles[i].url).length == 0) revert EmptyString();
             if (bytes(p.oracles[i].jsonPath).length == 0) revert EmptyString();
@@ -272,6 +288,7 @@ contract RitualPredict {
         m.quorum = p.quorum;
         m.target = p.target;
         m.comparator = p.comparator;
+        m.feeBps = p.feeBps;
         m.closeBlock = closeBlock;
         m.resolveBlock = resolveBlock;
         // state stays Open, outcome stays Unresolved, attempts stays 0.
@@ -469,7 +486,31 @@ contract RitualPredict {
         _pay(msg.sender, amount);
     }
 
-    /// `stake * totalPool / winningPool`, or 0 if this account backed the losing side.
+    /// The creator's cut of a resolved market's pool. Zero for a market that
+    /// refunds: a stake that comes back comes back whole.
+    function feeOf(uint256 marketId) public view returns (uint256) {
+        Market storage m = _market(marketId);
+        if (m.state != MarketState.Resolved) return 0;
+        return ((m.totalYes + m.totalNo) * m.feeBps) / 10_000;
+    }
+
+    /// Pay the creator their cut. Pull-based like everything else here, and
+    /// available only once the market has actually resolved.
+    function claimFee(uint256 marketId) external {
+        Market storage m = _market(marketId);
+        if (m.state != MarketState.Resolved) revert NotResolved();
+        if (m.feeClaimed) revert AlreadySettled();
+
+        uint256 amount = feeOf(marketId);
+        if (amount == 0) revert NothingToClaim();
+
+        m.feeClaimed = true;
+        emit FeeClaimed(marketId, m.creator, amount);
+        _pay(m.creator, amount);
+    }
+
+    /// `stake * distributable / winningPool`, or 0 if this account backed the
+    /// losing side. `distributable` is the pool after the creator's cut.
     function _payout(
         Market storage m,
         uint256 marketId,
@@ -481,7 +522,10 @@ contract RitualPredict {
             : noStake[marketId][account];
         uint256 winningPool = yesWon ? m.totalYes : m.totalNo;
         if (stake == 0 || winningPool == 0) return 0;
-        return (stake * (m.totalYes + m.totalNo)) / winningPool;
+
+        uint256 pool = m.totalYes + m.totalNo;
+        uint256 distributable = pool - (pool * m.feeBps) / 10_000;
+        return (stake * distributable) / winningPool;
     }
 
     // ─────────────────────────────── Views ───────────────────────────────

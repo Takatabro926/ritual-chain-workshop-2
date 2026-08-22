@@ -69,7 +69,11 @@ export async function openMarket(
   target: bigint,
   comparator: number,
   question = "Will the recorded reading clear the target?",
-  options: { oracles?: { url: string; jsonPath: string }[]; quorum?: number } = {},
+  options: {
+    oracles?: { url: string; jsonPath: string }[];
+    quorum?: number;
+    feeBps?: number;
+  } = {},
 ): Promise<bigint> {
   const oracles = options.oracles ?? [{ url: record.url, jsonPath: query }];
   await predict.write.createMarket([
@@ -79,6 +83,7 @@ export async function openMarket(
       quorum: options.quorum ?? 1,
       target,
       comparator,
+      feeBps: options.feeBps ?? 0,
       bettingSeconds: BETTING_SECONDS,
       resolveDelaySeconds: RESOLVE_DELAY_SECONDS,
     },

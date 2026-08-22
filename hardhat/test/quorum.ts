@@ -68,6 +68,7 @@ describe("declaring the sources", () => {
       quorum: 1,
       target: 1n,
       comparator: Comparator.GTE,
+      feeBps: 0,
       bettingSeconds: 30n,
       resolveDelaySeconds: 15n,
     };
@@ -94,6 +95,7 @@ describe("declaring the sources", () => {
       oracles: SOURCES.slice(0, 2),
       target: 1n,
       comparator: Comparator.GTE,
+      feeBps: 0,
       bettingSeconds: 30n,
       resolveDelaySeconds: 15n,
     };
