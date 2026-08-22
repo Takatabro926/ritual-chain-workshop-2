@@ -21,10 +21,15 @@ from what is claimable, and the bond a challenger would have to post.
 
 ## Ritual Chain was down for all of this
 
-`rpc.ritualfoundation.org` and the explorer both time out — checked by probe on every
-working session, most recently 2026-08-22, not assumed. **Nothing here has been deployed
-on chain.** No address, no transaction hash, no observed value that came from a real TEE
-executor.
+`rpc`, `explorer` and `faucet` all resolve to one host that never completes a TCP
+connection, while the documentation host answers in a fifth of a second — so this is one
+unreachable service, not DNS and not something at this end. Checked, not assumed, and
+checkable by anyone: `cd hardhat && node scripts/probe-chain.ts`, with the reading and
+what it rules out in [`docs/CHAIN-STATUS.md`](docs/CHAIN-STATUS.md).
+
+**Nothing here has been deployed on chain.** No address, no transaction hash, and no
+observed value that came back from a TEE executor — the faucet is on the same dead host,
+so even a working RPC would have left the deployer unfunded.
 
 What exists instead:
 
@@ -191,6 +196,7 @@ See [`web/README.md`](web/README.md) for demo mode, the design tokens, and deplo
 | [`ROADMAP.md`](ROADMAP.md) | What was planned, written before any code |
 | [`AUDIT.md`](AUDIT.md) | 13 findings, each marked fixed, scheduled or noted |
 | [`EXTENSIONS.md`](EXTENSIONS.md) | The four extensions and what each changed for readers |
+| [`docs/CHAIN-STATUS.md`](docs/CHAIN-STATUS.md) | Whether the chain is up, and how to check it yourself |
 | [`docs/screenshots/`](docs/screenshots/) | The app driving a market, and what those pictures are not |
 | [`web/README.md`](web/README.md) | The frontend, demo mode, and the design system |
 
