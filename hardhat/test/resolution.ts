@@ -172,7 +172,7 @@ describe("a missed read", () => {
       name: "a non-200 response",
       reason: "oracle returned non-200",
       arrange: async (env) => {
-        const rec = fixture("github-rate-limited");
+        const rec = fixture("github-not-found");
         await applyOracleFixture(env.ritual, rec, rec.jq[0].query);
       },
     },

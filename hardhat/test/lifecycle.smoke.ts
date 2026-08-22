@@ -54,8 +54,8 @@ describe("local lifecycle", async () => {
     await predict.write.createMarket([
       {
         question: "Will ETH/USD be above half of what it was?",
-        oracleUrl: record.url,
-        jsonPath: query,
+        oracles: [{ url: record.url, jsonPath: query }],
+        quorum: 1,
         target,
         comparator: Comparator.GTE,
         bettingSeconds: 30n,

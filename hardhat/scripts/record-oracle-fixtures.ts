@@ -37,9 +37,18 @@ const PROBES: Probe[] = [
     queries: [".data.amount | tonumber * 100 | floor"],
   },
   {
-    name: "github-rate-limited",
-    note: "A real non-200 with a real JSON error body. Never a NO, always a miss.",
-    url: "https://api.github.com/repos/ritual-foundation/ritual-dapp-skills",
+    name: "kraken-eth-usd",
+    note: "A third venue, quoting the same asset a few cents away from the others.",
+    url: "https://api.kraken.com/0/public/Ticker?pair=ETHUSD",
+    queries: [".result.XETHZUSD.c[0] | tonumber * 100 | floor"],
+  },
+  {
+    name: "github-not-found",
+    note:
+      "A real non-200 with a real JSON error body. The first attempt at this used a " +
+      "rate-limited endpoint, which answered 403 once and 200 the next day; a repository " +
+      "that does not exist answers 404 every time.",
+    url: "https://api.github.com/repos/ritual-foundation/this-repository-does-not-exist",
     queries: [".stargazers_count"],
   },
   {

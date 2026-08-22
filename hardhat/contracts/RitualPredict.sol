@@ -43,14 +43,21 @@ contract RitualPredict {
         No
     }
 
+    /// One place to read a number from. A market carries several.
+    struct Oracle {
+        string url;
+        string jsonPath;
+    }
+
     /// Storage layout *and* the shape returned by `getMarket` / `getMarkets`.
     struct Market {
         uint256 id;
         address creator;
         string question;
         // ── resolution rule: fixed at creation, no setter exists ──
-        string oracleUrl;
-        string jsonPath;
+        Oracle[] oracles;
+        /// Successful readings needed before the market may settle.
+        uint8 quorum;
         uint256 target;
         Comparator comparator;
         uint64 closeBlock;
@@ -62,6 +69,13 @@ contract RitualPredict {
         MarketState state;
         Outcome outcome;
         uint8 attempts;
+        /// The source being read now, and how many attempts it has already cost.
+        /// A source that keeps failing is abandoned rather than retried forever.
+        uint8 cursor;
+        uint8 cursorAttempts;
+        /// Every reading gathered so far, in the order the sources answered.
+        uint256[] readings;
+        /// The median of `readings` once the market settled.
         uint256 observedValue;
         string invalidReason;
     }
@@ -70,8 +84,8 @@ contract RitualPredict {
     /// call site (and to keep the stack shallow).
     struct NewMarket {
         string question;
-        string oracleUrl;
-        string jsonPath;
+        Oracle[] oracles;
+        uint8 quorum;
         uint256 target;
         Comparator comparator;
         uint256 bettingSeconds;
@@ -80,7 +94,13 @@ contract RitualPredict {
 
     // ────────────────────────────── Constants ────────────────────────────
 
-    /// Resolution attempts per market, booked up front as the Scheduler's `numCalls`,
+    /// Sources one market may consult. The Scheduler books
+    /// `oracles * MAX_ATTEMPTS` executions, and `frequency * numCalls` has to stay
+    /// under its MAX_LIFESPAN of 10,000.
+    uint256 public constant MAX_ORACLES = 5;
+
+    /// Resolution attempts per oracle, booked up front as part of the Scheduler's
+    /// `numCalls`,
     /// `RETRY_INTERVAL_BLOCKS` apart. `frequency * numCalls` must stay under the
     /// Scheduler's MAX_LIFESPAN of 10,000.
     uint32 public constant MAX_ATTEMPTS = 3;
@@ -133,10 +153,23 @@ contract RitualPredict {
     /// can change afterwards — there is no setter.
     event ResolutionRuleSet(
         uint256 indexed marketId,
-        string oracleUrl,
-        string jsonPath,
         uint256 target,
-        Comparator comparator
+        Comparator comparator,
+        uint8 quorum,
+        uint256 oracleCount
+    );
+    /// One per source, so a reader can reconstruct the rule from logs alone.
+    event OracleSource(
+        uint256 indexed marketId,
+        uint256 indexed index,
+        string url,
+        string jsonPath
+    );
+    /// A source answered. Emitted before the market has enough to settle.
+    event ReadingGathered(
+        uint256 indexed marketId,
+        uint256 indexed index,
+        uint256 value
     );
     event BetPlaced(
         uint256 indexed marketId,
@@ -184,6 +217,7 @@ contract RitualPredict {
     error BadDuration();
     error EmptyString();
     error TransferFailed();
+    error BadOracleSet();
 
     constructor(uint256 blockTimeMs_) {
         if (blockTimeMs_ == 0) revert BadDuration();
@@ -206,8 +240,14 @@ contract RitualPredict {
         NewMarket calldata p
     ) external returns (uint256 marketId) {
         if (bytes(p.question).length == 0) revert EmptyString();
-        if (bytes(p.oracleUrl).length == 0) revert EmptyString();
-        if (bytes(p.jsonPath).length == 0) revert EmptyString();
+
+        uint256 sources = p.oracles.length;
+        if (sources == 0 || sources > MAX_ORACLES) revert BadOracleSet();
+        if (p.quorum == 0 || p.quorum > sources) revert BadOracleSet();
+        for (uint256 i = 0; i < sources; i++) {
+            if (bytes(p.oracles[i].url).length == 0) revert EmptyString();
+            if (bytes(p.oracles[i].jsonPath).length == 0) revert EmptyString();
+        }
 
         if (p.bettingSeconds < MIN_BETTING_SECONDS) revert BadDuration();
         if (p.resolveDelaySeconds < MIN_RESOLVE_DELAY_SECONDS)
@@ -228,8 +268,8 @@ contract RitualPredict {
         m.id = marketId;
         m.creator = msg.sender;
         m.question = p.question;
-        m.oracleUrl = p.oracleUrl;
-        m.jsonPath = p.jsonPath;
+        for (uint256 i = 0; i < sources; i++) m.oracles.push(p.oracles[i]);
+        m.quorum = p.quorum;
         m.target = p.target;
         m.comparator = p.comparator;
         m.closeBlock = closeBlock;
@@ -238,7 +278,14 @@ contract RitualPredict {
 
         // Booking resolution here is the whole point: after this transaction the
         // market needs nobody's attention to settle.
-        uint256 scheduleId = _scheduleResolution(marketId, resolveBlock);
+        // Each source gets its own attempts: one short-running async call is
+        // allowed per transaction, so several sources cannot share one execution.
+        uint32 executionBudget = uint32(sources) * MAX_ATTEMPTS;
+        uint256 scheduleId = _scheduleResolution(
+            marketId,
+            resolveBlock,
+            executionBudget
+        );
         m.scheduleId = scheduleId;
 
         emit MarketCreated(
@@ -251,11 +298,18 @@ contract RitualPredict {
         );
         emit ResolutionRuleSet(
             marketId,
-            p.oracleUrl,
-            p.jsonPath,
             p.target,
-            p.comparator
+            p.comparator,
+            p.quorum,
+            sources
         );
+        for (uint256 i = 0; i < sources; i++)
+            emit OracleSource(
+                marketId,
+                i,
+                p.oracles[i].url,
+                p.oracles[i].jsonPath
+            );
     }
 
     function bet(uint256 marketId, bool isYes) external payable {
@@ -308,8 +362,12 @@ contract RitualPredict {
             return;
         }
 
-        (bool ok, uint256 observed, string memory reason) = _readOracle(
+        // The next source in line. One short-running async call is allowed per
+        // transaction, so a quorum is gathered across executions, not within one.
+        uint256 source = m.cursor;
+        (bool ok, uint256 reading, string memory reason) = _readOracle(
             m,
+            source,
             executor
         );
         if (!ok) {
@@ -317,6 +375,20 @@ contract RitualPredict {
             return;
         }
 
+        m.readings.push(reading);
+        m.cursor += 1;
+        m.cursorAttempts = 0;
+        emit ReadingGathered(marketId, source, reading);
+
+        if (m.readings.length < m.quorum) {
+            // Not enough sources have answered yet. If none are left, the market
+            // cannot settle honestly, so it refunds instead of guessing.
+            if (m.cursor >= m.oracles.length)
+                _invalidate(m, marketId, "quorum not reached");
+            return;
+        }
+
+        uint256 observed = _median(m.readings);
         m.observedValue = observed;
         Outcome outcome = _compare(observed, m.target, m.comparator)
             ? Outcome.Yes
@@ -337,8 +409,9 @@ contract RitualPredict {
         try IScheduler(RitualChain.SCHEDULER).cancel(m.scheduleId) {} catch {}
     }
 
-    /// A failed oracle read is never interpreted as NO. Once the booked attempts are
-    /// exhausted the market becomes refundable instead.
+    /// A failed oracle read is never interpreted as NO. The source is retried
+    /// until its own attempts run out, then the market moves on to the next one.
+    /// Only when the sources are exhausted does the market become refundable.
     function _fail(
         Market storage m,
         uint256 marketId,
@@ -346,7 +419,13 @@ contract RitualPredict {
         string memory reason
     ) private {
         emit ResolutionFailed(marketId, attempt, reason);
-        if (attempt >= MAX_ATTEMPTS) _invalidate(m, marketId, reason);
+
+        m.cursorAttempts += 1;
+        if (m.cursorAttempts >= MAX_ATTEMPTS) {
+            m.cursor += 1;
+            m.cursorAttempts = 0;
+        }
+        if (m.cursor >= m.oracles.length) _invalidate(m, marketId, reason);
     }
 
     function _invalidate(
@@ -472,6 +551,7 @@ contract RitualPredict {
     /// HTTP (0x0801) → jq (0x0803), both inside this one scheduled transaction.
     function _readOracle(
         Market storage m,
+        uint256 sourceIndex,
         address executor
     ) private returns (bool ok, uint256 value, string memory reason) {
         // 0x0801 takes 13 fields. Only the executor, the TTL, the URL and the
@@ -482,7 +562,7 @@ contract RitualPredict {
             HTTP_TTL_BLOCKS, //  2 ttl
             new bytes[](0), //  3 secretSignatures
             bytes(""), //  4 userPublicKey (empty = no output encryption)
-            m.oracleUrl, //  5 url
+            m.oracles[sourceIndex].url, //  5 url
             RitualChain.HTTP_GET, //  6 method
             new string[](0), //  7 headersKeys
             new string[](0), //  8 headersValues
@@ -512,7 +592,7 @@ contract RitualPredict {
                 return (false, 0, "oracle returned an empty body");
 
             (bool parsed, uint256 observed) = _jqUint(
-                m.jsonPath,
+                m.oracles[sourceIndex].jsonPath,
                 string(body)
             );
             if (!parsed)
@@ -600,7 +680,8 @@ contract RitualPredict {
 
     function _scheduleResolution(
         uint256 marketId,
-        uint64 resolveBlock
+        uint64 resolveBlock,
+        uint32 executionBudget
     ) private returns (uint256 callId) {
         // executionIndex is encoded as 0 on purpose: the Scheduler overwrites
         // calldata bytes 4-35 with the real index at execution time.
@@ -619,7 +700,7 @@ contract RitualPredict {
             data,
             RESOLVE_GAS_LIMIT,
             uint32(resolveBlock),
-            MAX_ATTEMPTS,
+            executionBudget,
             RETRY_INTERVAL_BLOCKS,
             SCHEDULER_TTL_BLOCKS,
             maxFeePerGas,
@@ -645,6 +726,28 @@ contract RitualPredict {
         if (comparator == Comparator.GTE) return observed >= target;
         if (comparator == Comparator.LT) return observed < target;
         return observed <= target;
+    }
+
+    /**
+     * The middle reading, by value. Nothing is averaged: an average invents a
+     * number no source reported, and the market settles against a number that
+     * some oracle actually returned. With an even count the upper middle wins.
+     *
+     * Sorts in place; `readings` is capped at MAX_ORACLES entries.
+     */
+    function _median(
+        uint256[] memory readings
+    ) private pure returns (uint256) {
+        for (uint256 i = 1; i < readings.length; i++) {
+            uint256 value = readings[i];
+            uint256 j = i;
+            while (j > 0 && readings[j - 1] > value) {
+                readings[j] = readings[j - 1];
+                j--;
+            }
+            readings[j] = value;
+        }
+        return readings[readings.length / 2];
     }
 
     function _secondsToBlocks(

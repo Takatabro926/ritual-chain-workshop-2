@@ -26,8 +26,8 @@ const QUERY = record.jq[0].query;
 function rule(overrides: Record<string, unknown> = {}) {
   return {
     question: "Will the recorded reading clear the target?",
-    oracleUrl: record.url,
-    jsonPath: QUERY,
+    oracles: [{ url: record.url, jsonPath: QUERY }],
+    quorum: 1,
     target: 100000n,
     comparator: Comparator.GTE,
     bettingSeconds: BETTING_SECONDS,
@@ -39,9 +39,16 @@ function rule(overrides: Record<string, unknown> = {}) {
 describe("createMarket", () => {
   it("rejects an empty question, url or json path", async () => {
     const { viem, predict } = await setUp();
-    for (const field of ["question", "oracleUrl", "jsonPath"]) {
+    await viem.assertions.revertWithCustomError(
+      predict.write.createMarket([rule({ question: "" })]),
+      predict,
+      "EmptyString",
+    );
+    for (const field of ["url", "jsonPath"]) {
       await viem.assertions.revertWithCustomError(
-        predict.write.createMarket([rule({ [field]: "" })]),
+        predict.write.createMarket([
+          rule({ oracles: [{ url: record.url, jsonPath: QUERY, [field]: "" }] }),
+        ]),
         predict,
         "EmptyString",
       );
@@ -103,12 +110,14 @@ describe("createMarket", () => {
       predict.write.createMarket([rule({ target: 4242n })]),
       predict,
       "ResolutionRuleSet",
-      [1n, record.url, QUERY, 4242n, Comparator.GTE],
+      [1n, 4242n, Comparator.GTE, 1, 1n],
     );
 
     const market = await predict.read.getMarket([1n]);
-    assert.equal(market.oracleUrl, record.url);
-    assert.equal(market.jsonPath, QUERY);
+    assert.equal(market.oracles.length, 1);
+    assert.equal(market.oracles[0].url, record.url);
+    assert.equal(market.oracles[0].jsonPath, QUERY);
+    assert.equal(market.quorum, 1);
     assert.equal(market.target, 4242n);
     assert.equal(market.comparator, Comparator.GTE);
     assert.equal(market.state, MarketState.Open);

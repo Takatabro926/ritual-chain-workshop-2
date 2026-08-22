@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-22T19:30:04.071Z",
+  "capturedAt": "2026-08-22T20:02:42.204Z",
   "jqVersion": "jq-1.8.2",
   "producedBy": "scripts/record-oracle-fixtures.ts",
   "records": [
@@ -15,15 +15,15 @@
       ],
       "headerValues": [
         "application/json; charset=utf-8",
-        "Sat, 22 Aug 2026 19:30:03 GMT",
+        "Sat, 22 Aug 2026 20:02:41 GMT",
         "cloudflare"
       ],
-      "body": "{\"ethereum\":{\"usd\":2428.21}}",
+      "body": "{\"ethereum\":{\"usd\":2440.36}}",
       "jq": [
         {
           "query": ".ethereum.usd * 100 | floor",
           "ok": true,
-          "value": "242821"
+          "value": "244036"
         }
       ]
     },
@@ -39,23 +39,47 @@
       ],
       "headerValues": [
         "application/json",
-        "Sat, 22 Aug 2026 19:30:03 GMT",
+        "Sat, 22 Aug 2026 20:02:41 GMT",
         "cloudflare"
       ],
-      "body": "{\"data\":{\"amount\":\"2428.555\",\"base\":\"ETH\",\"currency\":\"USD\"}}",
+      "body": "{\"data\":{\"amount\":\"2437.795\",\"base\":\"ETH\",\"currency\":\"USD\"}}",
       "jq": [
         {
           "query": ".data.amount | tonumber * 100 | floor",
           "ok": true,
-          "value": "242855"
+          "value": "243779"
         }
       ]
     },
     {
-      "name": "github-rate-limited",
-      "note": "A real non-200 with a real JSON error body. Never a NO, always a miss.",
-      "url": "https://api.github.com/repos/ritual-foundation/ritual-dapp-skills",
-      "status": 403,
+      "name": "kraken-eth-usd",
+      "note": "A third venue, quoting the same asset a few cents away from the others.",
+      "url": "https://api.kraken.com/0/public/Ticker?pair=ETHUSD",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json",
+        "Sat, 22 Aug 2026 20:02:41 GMT",
+        "cloudflare"
+      ],
+      "body": "{\"error\":[],\"result\":{\"XETHZUSD\":{\"a\":[\"2436.89000\",\"2\",\"2.000\"],\"b\":[\"2436.77000\",\"1\",\"1.000\"],\"c\":[\"2436.89000\",\"0.04307551\"],\"v\":[\"26607.70549597\",\"42245.23853315\"],\"p\":[\"2446.70485\",\"2464.85729\"],\"t\":[26761,40113],\"l\":[\"2375.09000\",\"2375.09000\"],\"h\":[\"2529.06000\",\"2546.62000\"],\"o\":\"2515.73000\"}}}",
+      "jq": [
+        {
+          "query": ".result.XETHZUSD.c[0] | tonumber * 100 | floor",
+          "ok": true,
+          "value": "243689"
+        }
+      ]
+    },
+    {
+      "name": "github-not-found",
+      "note": "A real non-200 with a real JSON error body. The first attempt at this used a rate-limited endpoint, which answered 403 once and 200 the next day; a repository that does not exist answers 404 every time.",
+      "url": "https://api.github.com/repos/ritual-foundation/this-repository-does-not-exist",
+      "status": 404,
       "headerKeys": [
         "content-type",
         "date",
@@ -63,10 +87,10 @@
       ],
       "headerValues": [
         "application/json; charset=utf-8",
-        "Sat, 22 Aug 2026 19:30:04 GMT",
-        "Varnish"
+        "Sat, 22 Aug 2026 20:02:42 GMT",
+        "github.com"
       ],
-      "body": "{\"message\":\"API rate limit exceeded for 0.0.0.0. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}\n",
+      "body": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/repos/repos#get-a-repository\",\"status\":\"404\"}",
       "jq": [
         {
           "query": ".stargazers_count",
@@ -87,7 +111,7 @@
       ],
       "headerValues": [
         "text/html",
-        "Sat, 22 Aug 2026 19:30:04 GMT",
+        "Sat, 22 Aug 2026 20:02:42 GMT",
         "cloudflare"
       ],
       "body": "<!doctype html><html lang=\"en\"><head><title>Example Domain</title><link rel=\"icon\" href=\"data:,\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}</style></head><body><div><h1>Example Domain</h1><p>This domain is for use in documentation examples without needing permission. Avoid use in operations.</p><p><a href=\"https://iana.org/domains/example\">Learn more</a></p></div></body></html>\n",

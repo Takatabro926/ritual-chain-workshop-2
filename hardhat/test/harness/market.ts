@@ -58,7 +58,10 @@ export async function setUp(options: { executors?: `0x${string}`[] } = {}) {
   };
 }
 
-/** A market whose rule points at a recorded fixture. Returns its id. */
+/**
+ * A market whose rule points at recorded fixtures. One source and a quorum of
+ * one unless the caller asks for more. Returns the new market's id.
+ */
 export async function openMarket(
   predict: any,
   record: OracleFixture,
@@ -66,12 +69,14 @@ export async function openMarket(
   target: bigint,
   comparator: number,
   question = "Will the recorded reading clear the target?",
+  options: { oracles?: { url: string; jsonPath: string }[]; quorum?: number } = {},
 ): Promise<bigint> {
+  const oracles = options.oracles ?? [{ url: record.url, jsonPath: query }];
   await predict.write.createMarket([
     {
       question,
-      oracleUrl: record.url,
-      jsonPath: query,
+      oracles,
+      quorum: options.quorum ?? 1,
       target,
       comparator,
       bettingSeconds: BETTING_SECONDS,
