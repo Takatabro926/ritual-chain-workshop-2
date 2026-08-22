@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-22T20:02:42.204Z",
+  "capturedAt": "2026-08-22T20:12:16.625Z",
   "jqVersion": "jq-1.8.2",
   "producedBy": "scripts/record-oracle-fixtures.ts",
   "records": [
@@ -15,15 +15,15 @@
       ],
       "headerValues": [
         "application/json; charset=utf-8",
-        "Sat, 22 Aug 2026 20:02:41 GMT",
+        "Sat, 22 Aug 2026 20:12:11 GMT",
         "cloudflare"
       ],
-      "body": "{\"ethereum\":{\"usd\":2440.36}}",
+      "body": "{\"ethereum\":{\"usd\":2440.82}}",
       "jq": [
         {
           "query": ".ethereum.usd * 100 | floor",
           "ok": true,
-          "value": "244036"
+          "value": "244082"
         }
       ]
     },
@@ -39,15 +39,15 @@
       ],
       "headerValues": [
         "application/json",
-        "Sat, 22 Aug 2026 20:02:41 GMT",
+        "Sat, 22 Aug 2026 20:12:12 GMT",
         "cloudflare"
       ],
-      "body": "{\"data\":{\"amount\":\"2437.795\",\"base\":\"ETH\",\"currency\":\"USD\"}}",
+      "body": "{\"data\":{\"amount\":\"2442.855\",\"base\":\"ETH\",\"currency\":\"USD\"}}",
       "jq": [
         {
           "query": ".data.amount | tonumber * 100 | floor",
           "ok": true,
-          "value": "243779"
+          "value": "244285"
         }
       ]
     },
@@ -63,15 +63,63 @@
       ],
       "headerValues": [
         "application/json",
-        "Sat, 22 Aug 2026 20:02:41 GMT",
+        "Sat, 22 Aug 2026 20:12:12 GMT",
         "cloudflare"
       ],
-      "body": "{\"error\":[],\"result\":{\"XETHZUSD\":{\"a\":[\"2436.89000\",\"2\",\"2.000\"],\"b\":[\"2436.77000\",\"1\",\"1.000\"],\"c\":[\"2436.89000\",\"0.04307551\"],\"v\":[\"26607.70549597\",\"42245.23853315\"],\"p\":[\"2446.70485\",\"2464.85729\"],\"t\":[26761,40113],\"l\":[\"2375.09000\",\"2375.09000\"],\"h\":[\"2529.06000\",\"2546.62000\"],\"o\":\"2515.73000\"}}}",
+      "body": "{\"error\":[],\"result\":{\"XETHZUSD\":{\"a\":[\"2441.97000\",\"1\",\"1.000\"],\"b\":[\"2441.86000\",\"7\",\"7.000\"],\"c\":[\"2442.39000\",\"0.02806501\"],\"v\":[\"26663.31600577\",\"42002.77688501\"],\"p\":[\"2446.69072\",\"2465.13767\"],\"t\":[26883,39802],\"l\":[\"2375.09000\",\"2375.09000\"],\"h\":[\"2529.06000\",\"2546.62000\"],\"o\":\"2515.73000\"}}}",
       "jq": [
         {
           "query": ".result.XETHZUSD.c[0] | tonumber * 100 | floor",
           "ok": true,
-          "value": "243689"
+          "value": "244239"
+        }
+      ]
+    },
+    {
+      "name": "kraken-clock-early",
+      "note": "The same source recorded twice, seconds apart. A market rule is fixed at creation, so a second reading has to come from the same url and the same jq program — only the moment differs. A clock guarantees the two disagree.",
+      "url": "https://api.kraken.com/0/public/Time",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json",
+        "Sat, 22 Aug 2026 20:12:12 GMT",
+        "cloudflare"
+      ],
+      "body": "{\"error\":[],\"result\":{\"unixtime\":1787429532,\"rfc1123\":\"Sat, 22 Aug 26 :: +0000\"}}",
+      "jq": [
+        {
+          "query": ".result.unixtime",
+          "ok": true,
+          "value": "1787429532"
+        }
+      ]
+    },
+    {
+      "name": "kraken-clock-late",
+      "note": "The second snapshot, taken a few seconds after the first.",
+      "url": "https://api.kraken.com/0/public/Time",
+      "status": 200,
+      "headerKeys": [
+        "content-type",
+        "date",
+        "server"
+      ],
+      "headerValues": [
+        "application/json",
+        "Sat, 22 Aug 2026 20:12:16 GMT",
+        "cloudflare"
+      ],
+      "body": "{\"error\":[],\"result\":{\"unixtime\":1787429536,\"rfc1123\":\"Sat, 22 Aug 26 :: +0000\"}}",
+      "jq": [
+        {
+          "query": ".result.unixtime",
+          "ok": true,
+          "value": "1787429536"
         }
       ]
     },
@@ -87,7 +135,7 @@
       ],
       "headerValues": [
         "application/json; charset=utf-8",
-        "Sat, 22 Aug 2026 20:02:42 GMT",
+        "Sat, 22 Aug 2026 20:12:16 GMT",
         "github.com"
       ],
       "body": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/repos/repos#get-a-repository\",\"status\":\"404\"}",
@@ -111,7 +159,7 @@
       ],
       "headerValues": [
         "text/html",
-        "Sat, 22 Aug 2026 20:02:42 GMT",
+        "Sat, 22 Aug 2026 20:12:16 GMT",
         "cloudflare"
       ],
       "body": "<!doctype html><html lang=\"en\"><head><title>Example Domain</title><link rel=\"icon\" href=\"data:,\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}</style></head><body><div><h1>Example Domain</h1><p>This domain is for use in documentation examples without needing permission. Avoid use in operations.</p><p><a href=\"https://iana.org/domains/example\">Learn more</a></p></div></body></html>\n",

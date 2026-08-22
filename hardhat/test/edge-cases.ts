@@ -17,6 +17,7 @@ import {
   MarketState,
   fire,
   openMarket,
+  passDisputeWindow,
   reachResolveBlock,
   setUp,
 } from "./harness/market.ts";
@@ -120,6 +121,7 @@ describe("a winner who cannot be paid", () => {
     await reachResolveBlock(env.networkHelpers);
     const market = await env.predict.read.getMarket([id]);
     await fire(env.ritual, market.scheduleId, 0n);
+    await passDisputeWindow(env.networkHelpers);
     assert.equal(
       (await env.predict.read.getMarket([id])).state,
       MarketState.Resolved,

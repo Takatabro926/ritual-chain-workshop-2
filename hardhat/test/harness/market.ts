@@ -20,6 +20,7 @@ export const MarketState = {
   Resolving: 2,
   Resolved: 3,
   Invalid: 4,
+  Disputed: 5,
 } as const;
 export const Outcome = { Unresolved: 0, Yes: 1, No: 2 } as const;
 
@@ -94,6 +95,14 @@ export async function openMarket(
 /** Mine past the betting window and up to the scheduled resolution block. */
 export async function reachResolveBlock(networkHelpers: any) {
   await networkHelpers.mine(BETTING_BLOCKS + RESOLVE_BLOCKS + 2);
+}
+
+/** Claims stay shut for this many blocks after a market first resolves. */
+export const DISPUTE_WINDOW_BLOCKS = 300;
+
+/** Move past the challenge window so winnings and fees can be claimed. */
+export async function passDisputeWindow(networkHelpers: any) {
+  await networkHelpers.mine(DISPUTE_WINDOW_BLOCKS + 1);
 }
 
 /** Run one scheduled execution with enough gas to honour the booking. */

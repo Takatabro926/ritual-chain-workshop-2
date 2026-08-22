@@ -26,8 +26,9 @@ contract RitualPredict {
         Open, // accepting bets
         Closed, // betting window over, waiting for the scheduled wake-up
         Resolving, // a resolution attempt has run and failed; retries pending
-        Resolved, // outcome final, winners can claim
-        Invalid // could not be resolved (or nobody won); everyone refunds
+        Resolved, // outcome final, winners can claim once the window passes
+        Invalid, // could not be resolved (or nobody won); everyone refunds
+        Disputed // a bonded challenger forced a second reading
     }
 
     enum Comparator {
@@ -82,6 +83,17 @@ contract RitualPredict {
         /// The median of `readings` once the market settled.
         uint256 observedValue;
         string invalidReason;
+        // ── dispute ──
+        /// Claims open at this block. Set when the market first resolves.
+        uint64 disputeUntil;
+        address challenger;
+        uint256 bond;
+        /// The outcome the challenger is arguing against.
+        Outcome disputedOutcome;
+        /// A forfeited bond, added to what the winners share.
+        uint256 bounty;
+        bool bondRefundable;
+        bool bondClaimed;
     }
 
     /// Arguments to `createMarket`, grouped so the whole rule reads as one unit at the
@@ -130,6 +142,14 @@ contract RitualPredict {
     /// Ceiling on the creator's cut. 5% of the pool, and the only number in the
     /// contract a market creator could otherwise have set against their bettors.
     uint16 public constant MAX_FEE_BPS = 500;
+
+    /// How long a resolved market can be challenged before claims open.
+    uint64 public constant DISPUTE_WINDOW_BLOCKS = 300;
+
+    /// What a challenge costs: a share of the pool, with a floor so a tiny
+    /// market is not free to attack.
+    uint16 public constant DISPUTE_BOND_BPS = 100;
+    uint256 public constant MIN_DISPUTE_BOND = 0.001 ether;
 
     uint256 public constant MIN_BETTING_SECONDS = 30;
     uint256 public constant MIN_RESOLVE_DELAY_SECONDS = 15;
@@ -207,6 +227,22 @@ contract RitualPredict {
         address indexed creator,
         uint256 amount
     );
+    event MarketDisputed(
+        uint256 indexed marketId,
+        address indexed challenger,
+        Outcome disputedOutcome,
+        uint256 bond
+    );
+    event DisputeSettled(
+        uint256 indexed marketId,
+        bool challengerWasRight,
+        Outcome outcome
+    );
+    event BondReturned(
+        uint256 indexed marketId,
+        address indexed challenger,
+        uint256 amount
+    );
     event WinningsClaimed(
         uint256 indexed marketId,
         address indexed claimant,
@@ -233,6 +269,10 @@ contract RitualPredict {
     error TransferFailed();
     error BadOracleSet();
     error BadFee();
+    error StillDisputable();
+    error AlreadyDisputed();
+    error DisputeWindowClosed();
+    error BondTooSmall();
 
     constructor(uint256 blockTimeMs_) {
         if (blockTimeMs_ == 0) revert BadDuration();
@@ -420,6 +460,19 @@ contract RitualPredict {
         } else {
             m.state = MarketState.Resolved;
             emit MarketResolved(marketId, outcome, observed);
+
+            if (m.disputedOutcome == Outcome.Unresolved) {
+                // First reading. Nobody may claim until the window closes.
+                m.disputeUntil = uint64(block.number) + DISPUTE_WINDOW_BLOCKS;
+            } else {
+                // A second reading, paid for by a challenger.
+                bool challengerWasRight = outcome != m.disputedOutcome;
+                if (challengerWasRight) m.bondRefundable = true;
+                else m.bounty = m.bond;
+                // One challenge per market: claims open immediately.
+                m.disputeUntil = uint64(block.number);
+                emit DisputeSettled(marketId, challengerWasRight, outcome);
+            }
         }
 
         // The outcome is final either way, so stop paying for the retries.
@@ -450,9 +503,68 @@ contract RitualPredict {
         uint256 marketId,
         string memory reason
     ) private {
+        // A challenger who asked a question the oracles could not answer was not
+        // wrong; they get their bond back.
+        if (m.challenger != address(0)) m.bondRefundable = true;
         m.state = MarketState.Invalid;
         m.invalidReason = reason;
         emit MarketInvalidated(marketId, reason);
+    }
+
+    // ────────────────────────────── Payouts ──────────────────────────────
+
+    // ────────────────────────────── Dispute ─────────────────────────────
+
+    /// What it costs to challenge this market's reading.
+    function disputeBond(uint256 marketId) public view returns (uint256) {
+        Market storage m = _market(marketId);
+        uint256 share = ((m.totalYes + m.totalNo) * DISPUTE_BOND_BPS) / 10_000;
+        return share < MIN_DISPUTE_BOND ? MIN_DISPUTE_BOND : share;
+    }
+
+    /**
+     * Buy a second reading.
+     *
+     * The oracles are consulted again from scratch. If the answer changes, the
+     * challenger was right and takes their bond back. If it does not, the bond
+     * joins the pool and the winners share it. Either way the market settles on
+     * the second reading, and there is no third: one challenge per market.
+     */
+    function dispute(uint256 marketId) external payable {
+        Market storage m = _market(marketId);
+        if (m.state != MarketState.Resolved) revert NotResolved();
+        if (m.challenger != address(0)) revert AlreadyDisputed();
+        if (block.number >= m.disputeUntil) revert DisputeWindowClosed();
+        if (msg.value < disputeBond(marketId)) revert BondTooSmall();
+
+        m.challenger = msg.sender;
+        m.bond = msg.value;
+        m.disputedOutcome = m.outcome;
+        m.outcome = Outcome.Unresolved;
+        m.state = MarketState.Disputed;
+
+        // Ask again from the first source, with a fresh budget.
+        delete m.readings;
+        m.cursor = 0;
+        m.cursorAttempts = 0;
+        m.scheduleId = _scheduleResolution(
+            marketId,
+            uint64(block.number) + 1,
+            uint32(m.oracles.length) * MAX_ATTEMPTS
+        );
+
+        emit MarketDisputed(marketId, msg.sender, m.disputedOutcome, msg.value);
+    }
+
+    /// Return a bond to a challenger the second reading vindicated.
+    function claimBond(uint256 marketId) external {
+        Market storage m = _market(marketId);
+        if (!m.bondRefundable) revert NothingToClaim();
+        if (m.bondClaimed) revert AlreadySettled();
+
+        m.bondClaimed = true;
+        emit BondReturned(marketId, m.challenger, m.bond);
+        _pay(m.challenger, m.bond);
     }
 
     // ────────────────────────────── Payouts ──────────────────────────────
@@ -461,6 +573,7 @@ contract RitualPredict {
     function claimWinnings(uint256 marketId) external {
         Market storage m = _market(marketId);
         if (m.state != MarketState.Resolved) revert NotResolved();
+        if (block.number < m.disputeUntil) revert StillDisputable();
         if (settled[marketId][msg.sender]) revert AlreadySettled();
 
         uint256 payout = _payout(m, marketId, msg.sender);
@@ -499,6 +612,7 @@ contract RitualPredict {
     function claimFee(uint256 marketId) external {
         Market storage m = _market(marketId);
         if (m.state != MarketState.Resolved) revert NotResolved();
+        if (block.number < m.disputeUntil) revert StillDisputable();
         if (m.feeClaimed) revert AlreadySettled();
 
         uint256 amount = feeOf(marketId);
@@ -524,7 +638,7 @@ contract RitualPredict {
         if (stake == 0 || winningPool == 0) return 0;
 
         uint256 pool = m.totalYes + m.totalNo;
-        uint256 distributable = pool - (pool * m.feeBps) / 10_000;
+        uint256 distributable = pool - (pool * m.feeBps) / 10_000 + m.bounty;
         return (stake * distributable) / winningPool;
     }
 

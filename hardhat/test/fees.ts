@@ -15,6 +15,7 @@ import {
   MarketState,
   fire,
   openMarket,
+  passDisputeWindow,
   reachResolveBlock,
   setUp,
 } from "./harness/market.ts";
@@ -73,6 +74,7 @@ describe("the creator's cut", () => {
   it("comes out of the pool before the winners are paid", async () => {
     const env = await marketWithFee(MAX_FEE_BPS);
     await fire(env.ritual, env.scheduleId, 0n);
+    await passDisputeWindow(env.networkHelpers);
 
     const pool = parseEther("4");
     const expectedFee = (pool * BigInt(MAX_FEE_BPS)) / 10_000n;
@@ -101,6 +103,7 @@ describe("the creator's cut", () => {
   it("changes nothing when it is zero", async () => {
     const env = await marketWithFee(0);
     await fire(env.ritual, env.scheduleId, 0n);
+    await passDisputeWindow(env.networkHelpers);
 
     assert.equal(await env.predict.read.feeOf([env.id]), 0n);
     const [, , , claimable] = await env.predict.read.stakesOf([
@@ -126,6 +129,7 @@ describe("the creator's cut", () => {
     );
 
     await fire(env.ritual, env.scheduleId, 0n);
+    await passDisputeWindow(env.networkHelpers);
     await env.predict.write.claimFee([env.id]);
     await env.viem.assertions.revertWithCustomError(
       env.predict.write.claimFee([env.id]),

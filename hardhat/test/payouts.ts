@@ -13,6 +13,7 @@ import {
   Outcome,
   fire,
   openMarket,
+  passDisputeWindow,
   reachResolveBlock,
   setUp,
 } from "./harness/market.ts";
@@ -42,6 +43,7 @@ async function resolvedMarket(stakes: { yes: bigint[]; no: bigint[] }) {
   await reachResolveBlock(env.networkHelpers);
   const market = await env.predict.read.getMarket([id]);
   await fire(env.ritual, market.scheduleId, 0n);
+  await passDisputeWindow(env.networkHelpers);
   return { ...env, id };
 }
 

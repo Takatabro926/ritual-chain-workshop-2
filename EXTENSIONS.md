@@ -68,3 +68,30 @@ creation like every other part of the rule.
 
 With `feeBps = 0` the arithmetic is identical to before, which is why the rest of the
 suite was unaffected by this change.
+
+## E3 — A challenge window
+
+A resolved market is not final at once. For `DISPUTE_WINDOW_BLOCKS` (300) nobody can
+claim, and anyone may post a bond and buy a second reading.
+
+- **The bond is 1% of the pool**, with a 0.001 ether floor so a small market is not
+  free to attack. It scales with what is actually at stake.
+- **The second reading is taken from scratch** — cursor and readings reset, a fresh
+  Scheduler booking, the same sources in the same order.
+- **The second reading stands, whichever way it goes.** There is no third: one
+  challenge per market. Claims open the moment it settles.
+- **A challenger who was right takes the bond back.** A challenger who was wrong
+  forfeits it into `bounty`, which is added to what the winners share — so the cost of
+  a frivolous challenge is paid to the people it inconvenienced.
+- **A challenge the oracles cannot answer refunds everyone** and returns the bond. The
+  challenger asked a fair question; the oracles failed to answer it.
+
+### Testing it needed a real constraint respected
+
+A market's rule is fixed at creation, so a second reading cannot come from another
+endpoint or another jq program — only from another *moment*. Serving a different
+venue's body to the original venue's jq program is something real jq would reject, so
+the fixtures instead hold **two snapshots of one source, recorded seconds apart**
+(`kraken-clock-early`, `kraken-clock-late`). A target between them reads NO on the
+first and YES on the second, which is a genuine disagreement rather than a
+manufactured one.

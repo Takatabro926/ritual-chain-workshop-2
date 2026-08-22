@@ -87,6 +87,9 @@ describe("local lifecycle", async () => {
     });
     assert.ok(ok);
 
+    // A resolved market is challengeable for a while before claims open.
+    await networkHelpers.mine(301);
+
     market = await predict.read.getMarket([1n]);
     assert.equal(market.state, MarketState.Resolved);
     assert.equal(market.outcome, Outcome.Yes);

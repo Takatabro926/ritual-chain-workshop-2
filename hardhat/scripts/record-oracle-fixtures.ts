@@ -21,6 +21,8 @@ type Probe = {
   url: string;
   /** jq programs to evaluate against the recorded body, uint256 output. */
   queries: string[];
+  /** Wait this long before probing, to space two snapshots of one source apart. */
+  delayMs?: number;
 };
 
 const PROBES: Probe[] = [
@@ -41,6 +43,22 @@ const PROBES: Probe[] = [
     note: "A third venue, quoting the same asset a few cents away from the others.",
     url: "https://api.kraken.com/0/public/Ticker?pair=ETHUSD",
     queries: [".result.XETHZUSD.c[0] | tonumber * 100 | floor"],
+  },
+  {
+    name: "kraken-clock-early",
+    note:
+      "The same source recorded twice, seconds apart. A market rule is fixed at " +
+      "creation, so a second reading has to come from the same url and the same " +
+      "jq program — only the moment differs. A clock guarantees the two disagree.",
+    url: "https://api.kraken.com/0/public/Time",
+    queries: [".result.unixtime"],
+  },
+  {
+    name: "kraken-clock-late",
+    note: "The second snapshot, taken a few seconds after the first.",
+    url: "https://api.kraken.com/0/public/Time",
+    queries: [".result.unixtime"],
+    delayMs: 4000,
   },
   {
     name: "github-not-found",
@@ -89,6 +107,9 @@ const jqVersion = execFileSync("jq", ["--version"], { encoding: "utf8" }).trim()
 const records = [];
 
 for (const probe of PROBES) {
+  if (probe.delayMs !== undefined)
+    await new Promise((resolve) => setTimeout(resolve, probe.delayMs));
+
   const response = await fetch(probe.url, {
     headers: { accept: "application/json" },
   });
