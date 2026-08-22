@@ -427,7 +427,56 @@ contract RitualPredict {
         Market storage m,
         address executor
     ) private returns (bool ok, uint256 value, string memory reason) {
-        // we'll fill this up
+        // 0x0801 takes 13 fields. Only the executor, the TTL, the URL and the
+        // method carry anything here: no secrets, no headers, no body, no dKMS.
+        bytes memory request = abi.encode(
+            executor, //  0 executor
+            new bytes[](0), //  1 encryptedSecrets
+            HTTP_TTL_BLOCKS, //  2 ttl
+            new bytes[](0), //  3 secretSignatures
+            bytes(""), //  4 userPublicKey (empty = no output encryption)
+            m.oracleUrl, //  5 url
+            RitualChain.HTTP_GET, //  6 method
+            new string[](0), //  7 headersKeys
+            new string[](0), //  8 headersValues
+            bytes(""), //  9 body
+            uint256(0), // 10 dkmsKeyIndex
+            uint8(0), // 11 dkmsKeyFormat
+            false // 12 piiEnabled
+        );
+
+        // Not a staticcall: this is short-running async, and the executor's
+        // response is injected into the replay of this same transaction.
+        (bool called, bytes memory raw) = RitualChain.HTTP_PRECOMPILE.call(
+            request
+        );
+        if (!called || raw.length == 0)
+            return (false, 0, "http precompile call failed");
+
+        try this.decodeHttpResponse(raw) returns (
+            uint16 status,
+            bytes memory body,
+            string memory errorMessage
+        ) {
+            if (bytes(errorMessage).length != 0)
+                return (false, 0, errorMessage);
+            if (status != 200) return (false, 0, "oracle returned non-200");
+            if (body.length == 0)
+                return (false, 0, "oracle returned an empty body");
+
+            (bool parsed, uint256 observed) = _jqUint(
+                m.jsonPath,
+                string(body)
+            );
+            if (!parsed)
+                return (false, 0, "jsonPath did not yield a number");
+
+            return (true, observed, "");
+        } catch {
+            // Either the envelope is malformed, or the async output has not
+            // settled yet. Both are a miss for this attempt, never a NO.
+            return (false, 0, "http response undecodable or unsettled");
+        }
     }
 
     /**
