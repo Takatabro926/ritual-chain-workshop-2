@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    name: contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hardhat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: hardhat/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: npx hardhat compile
+
+      # Size before coverage: a coverage build instruments the bytecode and
+      # reports contracts far larger than what would actually be deployed.
+      - name: contract size against EIP-170
+        run: node scripts/contract-size.ts --check
+
+      - name: tests with coverage
+        run: npx hardhat test nodejs --coverage
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+      # No contract address configured, so this is the demo build — the same one
+      # the deployment runs.
+      - run: pnpm build
+
+  end-to-end:
+    name: end to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: hardhat/pnpm-lock.yaml
+
+      - name: install
+        working-directory: hardhat
+        run: pnpm install --frozen-lockfile
+
+      - name: compile
+        working-directory: hardhat
+        run: npx hardhat compile
+
+      # A node in its own process, reached over JSON-RPC, the way a person runs
+      # it — not the in-process chain the unit suite uses.
+      - name: start a node
+        working-directory: hardhat
+        run: |
+          npx hardhat node > "$RUNNER_TEMP/node.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null -m 2 -X POST http://127.0.0.1:8545 \
+              -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'; then
+              echo "node is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "node never came up"; cat "$RUNNER_TEMP/node.log"; exit 1
+
+      - name: drive a market from creation to payout
+        working-directory: hardhat
+        run: npx hardhat run scripts/verify-lifecycle.ts --network localhost
+
+      - name: node log
+        if: failure()
+        run: tail -100 "$RUNNER_TEMP/node.log"
